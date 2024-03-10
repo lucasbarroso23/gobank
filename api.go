@@ -9,38 +9,15 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// The json.NewEnconder needs the io.Writer, and the http.ResponseWriter implement it
-// luckily this way we can encode whatever ´v´ is, where ´v´is equivalent to an empty interface
-func WriteJSON(w http.ResponseWriter, status int, v any) error {
-	w.WriteHeader(status)
-	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(v)
-}
-
-// basically this type is used to be able to conform our handle methods to http.HandlerFunc interface
-// the http.HandlerFunc by itself does not return an error and since our method does, we add this layer
-// to make this work with our mux router.HandleFunc
-type apiFunc func(http.ResponseWriter, *http.Request) error
-
-type apiError struct {
-	Error string
-}
-
-func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := f(w, r); err != nil {
-			WriteJSON(w, http.StatusBadRequest, apiError{Error: err.Error()})
-		}
-	}
-}
-
 type APIServer struct {
 	listenAddr string
+	store      Storage
 }
 
-func NewApiServer(listenAddr string) *APIServer {
+func NewApiServer(listenAddr string, store Storage) *APIServer {
 	return &APIServer{
 		listenAddr: listenAddr,
+		store:      store,
 	}
 }
 
@@ -52,7 +29,7 @@ func (s *APIServer) run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
-	router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleGetAccount))
+	router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleGetAccountById))
 
 	log.Println("JSON API server running on port: ", s.listenAddr)
 
@@ -77,6 +54,14 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
+	accounts, err := s.store.GetAccounts()
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, accounts)
+}
+
+func (s *APIServer) handleGetAccountById(w http.ResponseWriter, r *http.Request) error {
 	id := mux.Vars(r)["id"]
 
 	fmt.Println(id)
@@ -85,7 +70,18 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	// alternative to create a CreateAccountRequest{} and pass it as a pointer to Decode
+	createAccountReq := new(CreateAccountRequest)
+	if err := json.NewDecoder(r.Body).Decode(createAccountReq); err != nil {
+		return err
+	}
+
+	account := NewAccount(createAccountReq.FirstName, createAccountReq.LastName)
+	if err := s.store.CreateAccount(account); err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusCreated, account)
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
@@ -94,4 +90,29 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
 	return nil
+}
+
+// The json.NewEnconder needs the io.Writer, and the http.ResponseWriter implement it
+// luckily this way we can encode whatever ´v´ is, where ´v´is equivalent to an empty interface
+func WriteJSON(w http.ResponseWriter, status int, v any) error {
+	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(v)
+}
+
+// basically this type is used to be able to conform our handle methods to http.HandlerFunc interface
+// the http.HandlerFunc by itself does not return an error and since our method does, we add this layer
+// to make this work with our mux router.HandleFunc
+type apiFunc func(http.ResponseWriter, *http.Request) error
+
+type apiError struct {
+	Error string
+}
+
+func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := f(w, r); err != nil {
+			WriteJSON(w, http.StatusBadRequest, apiError{Error: err.Error()})
+		}
+	}
 }
