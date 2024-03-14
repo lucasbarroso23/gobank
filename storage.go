@@ -64,7 +64,7 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
     (first_name, last_name, number, balance, created_at)
     values ($1, $2, $3, $4, $5)`
 
-	resp, err := s.db.Query(
+	_, err := s.db.Query(
 		query,
 		acc.FirstName,
 		acc.LastName,
@@ -75,8 +75,6 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("%+v\n", resp)
 
 	return nil
 }
@@ -110,7 +108,7 @@ func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 	return accounts, nil
 }
 
-func (s *PostgresStore) GetAccountByumber(number int) (*Account, error) {
+func (s *PostgresStore) GetAccountByNumber(number int) (*Account, error) {
 	query := `select * from account number id= $1`
 	rows, err := s.db.Query(query, number)
 	if err != nil {
