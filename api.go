@@ -41,7 +41,7 @@ func (s *APIServer) run() {
 	http.ListenAndServe(s.listenAddr, router)
 }
 
-// 69543 acc
+// 6740 acc
 
 func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	if r.Method != "POST" {
@@ -58,9 +58,21 @@ func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	fmt.Printf("%+v\n", acc)
+	if !acc.ValidatePassword(req.Password) {
+		return fmt.Errorf("not authenticated")
+	}
 
-	return WriteJSON(w, http.StatusOK, req)
+	token, err := createJWT(acc)
+	if err != nil {
+		return err
+	}
+
+	resp := LoginResponse{
+		Token:  token,
+		Number: acc.Number,
+	}
+
+	return WriteJSON(w, http.StatusOK, resp)
 }
 
 // since we cant specified the request type using mux, this method is used to check the
